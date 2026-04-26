@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>نجوم الغابة السحرية - Magic Forest Stars</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a2f1f, #1a4a2a);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Comic Neue', 'Comic Sans MS', 'Segoe UI', cursive, sans-serif;
+            touch-action: manipulation;
+            padding: 16px;
+        }
+
+        .game-wrapper {
+            background: #2d6a4f;
+            border-radius: 60px;
+            padding: 20px;
+            box-shadow: 0 25px 40px rgba(0,0,0,0.4), inset 0 1px 3px rgba(255,255,200,0.5);
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border-radius: 40px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            cursor: pointer;
+            background: #95d5b2;
+            width: 100%;
+            height: auto;
+        }
+
+        .screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.88);
+            backdrop-filter: blur(12px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .menu-card {
+            background: linear-gradient(145deg, #ffb347, #ff8c00);
+            padding: 2rem;
+            border-radius: 70px;
+            text-align: center;
+            max-width: 90%;
+            width: 340px;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.5);
+            border: 3px solid #ffde6e;
+        }
+
+        .menu-card h1 {
+            font-size: 2rem;
+            color: #2d1b00;
+            text-shadow: 2px 2px 0 #ffde6e;
+            margin-bottom: 12px;
+        }
+
+        .menu-card p {
+            font-weight: bold;
+            color: #3e2a1f;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background: #2d6a4f;
+            border: none;
+            font-size: 1.4rem;
+            font-weight: bold;
+            padding: 10px 24px;
+            margin: 12px 8px;
+            border-radius: 60px;
+            color: white;
+            font-family: inherit;
+            cursor: pointer;
+            box-shadow: 0 5px 0 #1b4d3e;
+            transition: 0.05s linear;
+        }
+
+        button:active {
+            transform: translateY(3px);
+            box-shadow: 0 2px 0 #1b4d3e;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .info-panel {
+            position: absolute;
+            top: 12px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            font-weight: bold;
+            font-size: 1.2rem;
+            background: #000000aa;
+            backdrop-filter: blur(4px);
+            padding: 8px;
+            color: gold;
+            pointer-events: none;
+            z-index: 20;
+        }
+
+        .controls-hint {
+            text-align: center;
+            margin-top: 12px;
+            font-weight: bold;
+            background: #000000aa;
+            display: inline-block;
+            width: auto;
+            padding: 6px 20px;
+            border-radius: 40px;
+            color: #ffe5a3;
+            font-size: 0.75rem;
+        }
+    </style>
+</head>
+<body>
+<div id="mainMenu" class="screen">
+    <div class="menu-card">
+        <h1>🌟 نجوم الغابة 🌟</h1>
+        <p>🦊🐘🐒🐧🐢<br>طابق الحيوانات مع ظلالها واجمع النجوم السحرية!</p>
+        <button id="startBtn">🎉 ابدأ المغامرة 🎉</button>
+    </div>
+</div>
+
+<div id="gameOverScreen" class="screen hidden">
+    <div class="menu-card">
+        <h1>🏆 نهاية الرحلة 🏆</h1>
+        <p id="finalScoreMsg">نجومك: 0</p>
+        <button id="restartBtn">🔄 العب مجدداً</button>
+        <button id="menuBtn">🏠 القائمة الرئيسية</button>
+    </div>
+</div>
+
+<canvas id="gameCanvas" width="450" height="650"></canvas>
+<div class="controls-hint">🐾 اسحب الحيوان إلى ظله ← تطابق ذكي | ⭐ اجمع أكبر عدد من النجوم</div>
+
+<script>
+    (function(){
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let cw = 450, ch = 650;
+        canvas.width = cw;
+        canvas.height = ch;
+
+        let gameActive = false;
+        let animFrame = null;
+        let mode = 'MATCH';   // MATCH or FAST_COLLECT
+        
+        // *************** متغيرات وضع المطابقة ***************
+        let animals = [];       // حيوانات متحركة (تسحب)
+        let shadows = [];       // مواقع الظلال الثابتة
+        let draggedAnimal = null;
+        let dragOffsetX = 0, dragOffsetY = 0;
+        let matchesDone = 0;     // كم حيوان تم مطابقته
+        let totalStars = 0;      // النجوم الكلية (النتيجة النهائية)
+        let matchSuccess = false;
+        
+        // *************** متغيرات وضع السرعة (جمع النجوم) ***************
+        let stars = [];
+        let fastScore = 0;
+        let fastTime = 30;      // 30 ثانية لجمع أكبر عدد
+        let fastTimer = null;
+        
+        // *************** تعريف الحيوانات وألوانها ***************
+        const animalList = [
+            { name: '🦊', color: '#e67e22', shadowColor: '#b95b0f', label: 'ثعلب' },
+            { name: '🐘', color: '#7f8c8d', shadowColor: '#5a6268', label: 'فيل' },
+            { name: '🐒', color: '#8e5a2e', shadowColor: '#603d1f', label: 'قرد' },
+            { name: '🐧', color: '#2c3e50', shadowColor: '#141f2c', label: 'بطريق' },
+            { name: '🐢', color: '#27ae60', shadowColor: '#1b7943', label: 'سلحفاة' }
+        ];
+        
+        function initMatchMode(){
+            mode = 'MATCH';
+            matchesDone = 0;
+            // إنشاء 5 حيوانات عشوائية في أعلى الشاشة
+            animals = [];
+            shadows = [];
+            for(let i=0; i<5; i++){
+                let animalData = animalList[i % animalList.length];
+                animals.push({
+                    id: i,
+                    type: i % animalList.length,
+                    name: animalData.name,
+                    color: animalData.color,
+                    label: animalData.label,
+                    x: 60 + (i * 75),
+                    y: 60,
+                    w: 55,
+                    h: 55,
+                    matched: false,
+                    dragged: false
+                });
+                // الظل في الأسفل (موضع ثابت)
+                shadows.push({
+                    id: i,
+                    type: i % animalList.length,
+                    shadowColor: animalData.shadowColor,
+                    label: animalData.label,
+                    x: 60 + (i * 75),
+                    y: ch - 110,
+                    w: 55,
+                    h: 55,
+                    matched: false
+                });
+            }
+            // خلط ترتيب الظلال لزيادة التحدي
+            for(let i=shadows.length-1; i>0; i--){
+                let j = Math.floor(Math.random()*(i+1));
+                [shadows[i], shadows[j]] = [shadows[j], shadows[i]];
+                // اعادة ضبط المواضع x
+                shadows[i].x = 60 + (i * 75);
+                shadows[j].x = 60 + (j * 75);
+            }
+            draggedAnimal = null;
+        }
+        
+        // فحص إذا تم مطابقة كل الحيوانات
+        function checkAllMatched(){
+            let allMatched = true;
+            for(let a of animals){
+                if(!a.matched) allMatched = false;
+            }
+            if(allMatched && matchesDone >=5 && gameActive){
+                // الانتقال إلى وضع جمع النجوم
+                startFastMode();
+            }
+        }
+        
+        // بدء وضع السرعة (جمع النجوم)
+        function startFastMode(){
+            mode = 'FAST_COLLECT';
+            stars = [];
+            fastScore = 0;
+            fastTime = 30;
+            if(fastTimer) clearInterval(fastTimer);
+            fastTimer = setInterval(()=>{
+                if(!gameActive){
+                    clearInterval(fastTimer);
+                    return;
+                }
+                fastTime--;
+                if(fastTime <= 0){
+                    clearInterval(fastTimer);
+                    gameActive = false;
+                    totalStars += fastScore;
+                    document.getElementById('finalScoreMsg').innerHTML = `✨ نجومك: ${totalStars} ✨`;
+                    document.getElementById('gameOverScreen').classList.remove('hidden');
+                    if(animFrame) cancelAnimationFrame(animFrame);
+                    gameActive = false;
+                }
+            },1000);
+            // إضافة نجوم جديدة كل 0.6 ثانية
+            starSpawnInterval = setInterval(()=>{
+                if(!gameActive || mode !== 'FAST_COLLECT'){
+                    if(starSpawnInterval) clearInterval(starSpawnInterval);
+                    return;
+                }
+                stars.push({
+                    x: 30 + Math.random() * (cw-70),
+                    y: -20,
+                    r: 12,
+                    speed: 2 + Math.random() * 3
+                });
+            },550);
+        }
+        
+        let starSpawnInterval = null;
+        
+        function updateFastMode(){
+            if(!gameActive) return;
+            // تحديث مواقع النجوم
+            for(let i=0; i<stars.length; i++){
+                stars[i].y += stars[i].speed;
+                if(stars[i].y > ch+30){
+                    stars.splice(i,1);
+                    i--;
+                }
+            }
+        }
+        
+        function drawFastMode(){
+            ctx.fillStyle = "#0b3b2f";
+            ctx.fillRect(0,0,cw,ch);
+            ctx.font = "bold 28px 'Comic Neue'";
+            ctx.fillStyle = "#fbffb9";
+            ctx.fillText(`⭐ جمع النجوم: ${fastScore}`, cw/2-100, 55);
+            ctx.font = "bold 22px";
+            ctx.fillStyle = "#f4d03f";
+            ctx.fillText(`⏱️ ${fastTime} ث`, cw-90, 95);
+            // رسم النجوم
+            for(let s of stars){
+                ctx.fillStyle = "#f1c40f";
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = "#ffd966";
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = "#f39c12";
+                ctx.beginPath();
+                ctx.arc(s.x-2, s.y-2, 3, 0, Math.PI*2);
+                ctx.fill();
+            }
+            ctx.shadowBlur = 0;
+            // رسم يدوي سريع للمساعدة: اضغط على الشاشة لتجمع نجم
+            ctx.fillStyle = "#ffffffcc";
+            ctx.font = "18px cursive";
+            ctx.fillText("✨ اضغط على النجوم ✨", cw/2-100, ch-30);
+        }
+        
+        // رسم وضع المطابقة
+        function drawMatchMode(){
+            // الخلفية
+            const grad = ctx.createLinearGradient(0,0,0,ch);
+            grad.addColorStop(0,"#9ad0a8");
+            grad.addColorStop(1,"#468966");
+            ctx.fillStyle = grad;
+            ctx.fillRect(0,0,cw,ch);
+            
+            // منطقة العنوان
+            ctx.fillStyle = "#2d4a3a";
+            ctx.font = "bold 24px 'Comic Neue'";
+            ctx.fillText("🐾 اسحب الحيوان إلى ظله 🐾", 70, 45);
+            ctx.font = "bold 20px";
+            ctx.fillStyle = "#f4e285";
+            ctx.fillText(`مطابقات: ${matchesDone}/5`, 20, 100);
+            
+            // رسم الظلال في الأسفل
+            for(let sh of shadows){
+                ctx.fillStyle = sh.shadowColor;
+                ctx.shadowBlur = 0;
+                ctx.beginPath();
+                ctx.ellipse(sh.x+sh.w/2, sh.y+sh.h/2-5, sh.w/2, sh.h/3.5, 0, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = "#00000044";
+                ctx.font = "bold 28px";
+                ctx.fillText(sh.label, sh.x+12, sh.y+38);
+            }
+            // رسم الحيوانات
+            for(let a of animals){
+                if(a.matched) continue;
+                ctx.fillStyle = a.color;
+                ctx.shadowBlur = 6;
+                ctx.beginPath();
+                ctx.ellipse(a.x+a.w/2, a.y+a.h/2-5, a.w/2.2, a.h/2.5, 0, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = "#fff2cc";
+                ctx.font = "38px 'Segoe UI'";
+                ctx.fillText(a.name, a.x+12, a.y+42);
+                if(draggedAnimal === a){
+                    ctx.strokeStyle = "gold";
+                    ctx.lineWidth = 4;
+                    ctx.strokeRect(a.x-3, a.y-3, a.w+6, a.h+6);
+                }
+            }
+            ctx.shadowBlur = 0;
+        }
+        
+        // أحداث السحب على الكنفاس (لمطابقة الحيوانات)
+        function handleDragStart(e){
+            if(!gameActive || mode !== 'MATCH') return;
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width/rect.width;
+            const scaleY = canvas.height/rect.height;
+            let clientX, clientY;
+            if(e.touches){
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+            let mouseX = (clientX - rect.left) * scaleX;
+            let mouseY = (clientY - rect.top) * scaleY;
+            for(let a of animals){
+                if(!a.matched && mouseX > a.x && mouseX < a.x+a.w && mouseY > a.y && mouseY < a.y+a.h){
+                    draggedAnimal = a;
+                    dragOffsetX = mouseX - a.x;
+                    dragOffsetY = mouseY - a.y;
+                    break;
+                }
+            }
+        }
+        
+        function handleDragMove(e){
+            if(!draggedAnimal || !gameActive || mode !== 'MATCH') return;
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width/rect.width;
+            const scaleY = canvas.height/rect.height;
+            let clientX, clientY;
+            if(e.touches){
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+            let mouseX = (clientX - rect.left) * scaleX;
+            let mouseY = (clientY - rect.top) * scaleY;
+            draggedAnimal.x = mouseX - dragOffsetX;
+            draggedAnimal.y = mouseY - dragOffsetY;
+        }
+        
+        function handleDragEnd(e){
+            if(!draggedAnimal || !gameActive || mode !== 'MATCH') return;
+            e.preventDefault();
+            // التحقق من التطابق مع الظل
+            let matchedShadow = null;
+            for(let sh of shadows){
+                if(sh.matched) continue;
+                if(draggedAnimal.x + draggedAnimal.w > sh.x && draggedAnimal.x < sh.x+sh.w &&
+                   draggedAnimal.y + draggedAnimal.h > sh.y && draggedAnimal.y < sh.y+sh.h){
+                    if(draggedAnimal.type === sh.type){
+                        matchedShadow = sh;
+                        break;
+                    }
+                }
+            }
+            if(matchedShadow){
+                // تطابق صحيح
+                draggedAnimal.matched = true;
+                matchedShadow.matched = true;
+                matchesDone++;
+                totalStars += 10;   // كل تطابق صحيح = 10 نجوم
+                // إعادة وضع الحيوان إلى موقعه الأصلي (لكنه مقفل)
+                draggedAnimal.x = 60 + (draggedAnimal.id * 75);
+                draggedAnimal.y = 60;
+                // تأثير صوتي بسيط
+                playBeep(880);
+                checkAllMatched();
+            } else {
+                // إعادة الحيوان إلى وضعه الأصلي بدون مطابقة
+                draggedAnimal.x = 60 + (draggedAnimal.id * 75);
+                draggedAnimal.y = 60;
+                playBeep(320);
+            }
+            draggedAnimal = null;
+        }
+        
+        function playBeep(freq){
+            try{
+                let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                let osc = audioCtx.createOscillator();
+                let gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.frequency.value = freq;
+                gain.gain.value = 0.1;
+                osc.start();
+                gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.2);
+                osc.stop(audioCtx.currentTime + 0.2);
+                audioCtx.resume();
+            }catch(e){}
+        }
+        
+        // نقر لجمع النجوم في الوضع السريع
+        function handleFastTap(e){
+            if(!gameActive || mode !== 'FAST_COLLECT') return;
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width/rect.width;
+            const scaleY = canvas.height/rect.height;
+            let clientX, clientY;
+            if(e.touches){
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+            let tapX = (clientX - rect.left) * scaleX;
+            let tapY = (clientY - rect.top) * scaleY;
+            for(let i=0; i<stars.length; i++){
+                let s = stars[i];
+                let dx = tapX - s.x;
+                let dy = tapY - s.y;
+                if(Math.hypot(dx,dy) < s.r+15){
+                    stars.splice(i,1);
+                    fastScore += 5;
+                    totalStars += 5;
+                    playBeep(720);
+                    break;
+                }
+            }
+        }
+        
+        function gameLoop(){
+            if(!gameActive){
+                if(animFrame) cancelAnimationFrame(animFrame);
+                return;
+            }
+            if(mode === 'MATCH'){
+                drawMatchMode();
+            } else {
+                updateFastMode();
+                drawFastMode();
+            }
+            animFrame = requestAnimationFrame(gameLoop);
+        }
+        
+        function startGame(){
+            gameActive = true;
+            if(starSpawnInterval) clearInterval(starSpawnInterval);
+            if(fastTimer) clearInterval(fastTimer);
+            totalStars = 0;
+            initMatchMode();
+            mode = 'MATCH';
+            if(animFrame) cancelAnimationFrame(animFrame);
+            gameLoop();
+        }
+        
+        function resetGame(){
+            if(starSpawnInterval) clearInterval(starSpawnInterval);
+            if(fastTimer) clearInterval(fastTimer);
+            gameActive = false;
+            startGame();
+        }
+        
+        function exitToMain(){
+            if(starSpawnInterval) clearInterval(starSpawnInterval);
+            if(fastTimer) clearInterval(fastTimer);
+            gameActive = false;
+            if(animFrame) cancelAnimationFrame(animFrame);
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            document.getElementById('mainMenu').classList.remove('hidden');
+        }
+        
+        // ربط الأحداث
+        canvas.addEventListener('mousedown', handleDragStart);
+        window.addEventListener('mousemove', handleDragMove);
+        window.addEventListener('mouseup', handleDragEnd);
+        canvas.addEventListener('touchstart', (e)=>{
+            if(mode === 'MATCH') handleDragStart(e);
+            else handleFastTap(e);
+        });
+        window.addEventListener('touchmove', (e)=>{
+            if(mode === 'MATCH') handleDragMove(e);
+        });
+        window.addEventListener('touchend', (e)=>{
+            if(mode === 'MATCH') handleDragEnd(e);
+        });
+        canvas.addEventListener('click', (e)=>{
+            if(mode === 'FAST_COLLECT') handleFastTap(e);
+        });
+        
+        document.getElementById('startBtn').onclick = ()=>{
+            document.getElementById('mainMenu').classList.add('hidden');
+            startGame();
+        };
+        document.getElementById('restartBtn').onclick = ()=>{
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            resetGame();
+        };
+        document.getElementById('menuBtn').onclick = ()=>{
+            exitToMain();
+        };
+        
+        initMatchMode();
+        drawMatchMode();
+    })();
+</script>
+</body>
+</html>
